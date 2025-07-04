@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Document Assistant</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles for the Inter font and dark theme */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #1a202c; 
+            color: #e2e8f0; 
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            overflow-y: auto;
+        }
+        .center-container {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            flex-grow: 1;
+            transition: all 0.5s ease-in-out; /* Smooth transition for movement */
+            padding: 1rem; /* Add some padding */
+        }
+        .bottom-container {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            padding: 1rem;
+            background-color: #1a202c; /* Dark background for the bottom bar */
+            box-shadow: 0 -4px 10px rgba(0, 0, 0, 0.3);
+            transition: all 0.5s ease-in-out; /* Smooth transition for movement */
+            z-index: 100; /* Ensure it's above other content */
+        }
+        .chat-history-container {
+            flex-grow: 1;
+            padding: 1rem 2rem; /* Padding for the chat content */
+            max-width: 800px; /* Max width for readability */
+            margin: 0 auto; /* Center the chat area */
+            overflow-y: auto; /* Enable scrolling for long chat history */
+            margin-bottom: 80px; /* Space for the fixed query bar */
+            display: flex; /* Use flex for column layout */
+            flex-direction: column;
+            gap: 1rem; /* Space between chat bubbles */
+            width: 100%; /* Take full width of its parent */
+        }
+        .chat-bubble {
+            padding: 0.75rem 1.25rem;
+            border-radius: 0.75rem; /* Rounded corners */
+            max-width: 90%;
+            word-wrap: break-word; /* Ensure long words wrap */
+        }
+        .user-bubble {
+            background-color: #2d3748; /* Darker gray for user */
+            align-self: flex-end; /* Align to the right */
+            color: #e2e8f0;
+        }
+        .ai-bubble {
+            background-color: #4a5568; /* Slightly lighter gray for AI */
+            align-self: flex-start; /* Align to the left */
+            color: #e2e8f0;
+        }
+        .query-input {
+            width: 100%;
+            padding-right: 3rem; /* Space for the send button */
+        }
+        .send-button {
+            position: absolute;
+            right: 0.75rem;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: #63b3ed; /* Blue color for the icon */
+            font-size: 1.5rem;
+            padding: 0.5rem;
+            border-radius: 9999px; /* Full rounded */
+            transition: background-color 0.2s;
+        }
+        .send-button:hover {
+            background-color: rgba(99, 179, 237, 0.2); /* Light blue hover */
+        }
+        /* Custom scrollbar for webkit browsers */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #2d3748; /* Darker track */
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #4a5568; /* Slightly lighter thumb */
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #63b3ed; /* Blue on hover */
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Header Section (Optional, can be removed if not needed for Copilot-like interface) -->
+    <header class="bg-gray-900 text-white p-4 shadow-md rounded-b-lg flex justify-between items-center">
+        <div class="flex items-center">
+            <button class="text-white text-2xl mr-4">&#9776;</button> <!-- Hamburger icon -->
+            <h1 class="text-xl font-bold">AI Document Assistant</h1>
+        </div>
+        <!-- Removed Sign In Button -->
+    </header>
+
+    <!-- Main Content Area -->
+    <div id="appContainer" class="center-container">
+        <!-- Initial Welcome Message -->
+        <h2 id="welcomeMessage" class="text-4xl md:text-5xl font-extrabold text-white mb-8 text-center px-4">
+            Hey, what's on your mind today?
+        </h2>
+
+        <!-- Chat History Display Area (initially hidden) -->
+        <div id="chatHistoryContainer" class="chat-history-container hidden">
+            <!-- Chat bubbles will be appended here -->
+        </div>
+
+        <!-- Query Input Bar -->
+        <div id="queryBar" class="w-full max-w-2xl relative">
+            <input
+                type="text"
+                id="queryInput"
+                placeholder="Ask your query"
+                class="query-input bg-gray-700 text-white placeholder-gray-400 p-4 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-md transition duration-300"
+            />
+            <button id="sendButton" class="send-button">
+                &#9650; <!-- Up arrow icon -->
+            </button>
+        </div>
+    </div>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            
+            const appContainer = document.getElementById('appContainer');
+            const welcomeMessage = document.getElementById('welcomeMessage');
+            const queryBar = document.getElementById('queryBar');
+            const queryInput = document.getElementById('queryInput');
+            const sendButton = document.getElementById('sendButton');
+            const chatHistoryContainer = document.getElementById('chatHistoryContainer');
+            const loadingIndicator = document.getElementById('loadingIndicator'); // Re-using for general loading
+
+            let isQuerySubmitted = false; // Flag to track if a query has been submitted
+
+
+       // <!-- Load Marked.js if using Markdown -->
+        
+
+const appendMessage = (sender, message) => {
+  const messageDiv = document.createElement('div');
+  messageDiv.classList.add('chat-bubble');
+  if (sender === 'user') {
+    messageDiv.classList.add('user-bubble');
+  } else {
+    messageDiv.classList.add('ai-bubble');
+  }
+
+  // ✅ Either HTML or Markdown rendering:
+  // messageDiv.innerHTML = message; // If backend sends HTML
+  messageDiv.innerHTML = marked.parse(message); // If backend sends Markdown
+
+  chatHistoryContainer.appendChild(messageDiv);
+  chatHistoryContainer.scrollTop = chatHistoryContainer.scrollHeight;
+};
+
+// ... your sendQuery stays the same ...
+
+
+           
+
+            // Function to handle sending the query
+            const sendQuery = async () => {
+                const query = queryInput.value.trim();
+                if (!query) return; // Do nothing if query is empty
+
+                // If this is the first query, transition the UI
+                if (!isQuerySubmitted) {
+                    appContainer.classList.remove('center-container');
+                    appContainer.classList.add('flex-col', 'items-center', 'justify-start', 'pt-8'); // Adjust for top alignment
+                    welcomeMessage.classList.add('hidden'); // Hide welcome message
+                    queryBar.classList.remove('w-full', 'max-w-2xl', 'relative');
+                    queryBar.classList.add('bottom-container'); // Move to bottom and fix position
+                    chatHistoryContainer.classList.remove('hidden'); // Show chat history area
+                    isQuerySubmitted = true;
+                }
+
+                appendMessage('user', query); // Add user's question to chat history
+                queryInput.value = ''; // Clear input field immediately
+
+                // Show loading indicator in the chat history area
+                const loadingDiv = document.createElement('div');
+                loadingDiv.id = 'currentLoadingIndicator'; // Give it a unique ID
+                loadingDiv.classList.add('ai-bubble', 'flex', 'items-center', 'gap-2');
+                loadingDiv.innerHTML = `
+                    <div class="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-300"></div>
+                    <span>Thinking...</span>
+                `;
+                chatHistoryContainer.appendChild(loadingDiv);
+                chatHistoryContainer.scrollTop = chatHistoryContainer.scrollHeight;
+
+
+                try {
+                    const backendUrl = 'http://127.0.0.1:5000/api/query';
+                   // console.log(`Attempting to send query to ${backendUrl}...`);
+                    const response = await fetch(backendUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ query: query }),
+                    });
+
+                   // console.log(`Received response status: ${response.status}`);
+
+                    // Remove the loading indicator
+                    if (document.getElementById('currentLoadingIndicator')) {
+                        document.getElementById('currentLoadingIndicator').remove();
+                    }
+
+                    if (!response.ok) {
+                        const errorText = await response.text();
+                        let errorMessage = `HTTP error! Status: ${response.status}`;
+                        try {
+                            const errorData = JSON.parse(errorText);
+                            errorMessage = errorData.error || errorMessage;
+                        } catch (e) {
+                            errorMessage = `HTTP error! Status: ${response.status}. Response: ${errorText.substring(0, 100)}...`;
+                        }
+                        throw new Error(errorMessage);
+                    }
+
+                    const data = await response.json();
+                        if (data.answer) {
+                            appendMessage('ai', data.answer); // Add AI's answer to chat history
+                    } else {
+                        appendMessage('ai', 'Backend returned a successful response, but no "answer" field was found.');
+                    }
+
+                } catch (error) {
+                    console.error('Error fetching answer:', error);
+                    // Remove loading indicator if still present
+                    if (document.getElementById('currentLoadingIndicator')) {
+                        document.getElementById('currentLoadingIndicator').remove();
+                    }
+                    let displayMessage = `Error: An issue occurred. Please ensure your Python backend is running at http://127.0.0.1:5000 and check its console for errors.`;
+                    if (error.message.includes('Failed to fetch')) {
+                        displayMessage = `Error: Could not connect to the backend server. Please ensure your Python Flask backend is running at http://127.0.0.1:5000.`;
+                    } else {
+                        displayMessage = `Error: ${error.message}. Please check the backend server logs for more details.`;
+                    }
+                    appendMessage('ai', displayMessage); // Display error in chat history
+                }
+            };
+
+            // Event listener for send button click
+            sendButton.addEventListener('click', sendQuery);
+
+            queryInput.addEventListener('keypress', (event) => {
+                if (event.key === 'Enter') {
+                    sendQuery();
+                }
+            });
+        });
+    </script>
+</body>
+</html>
